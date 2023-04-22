@@ -7,7 +7,7 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 import matplotlib
-from numpngw import write_apng
+# from numpngw import write_apng
 from IPython.display import Image
 from tqdm.notebook import tqdm
 
