@@ -23,121 +23,139 @@ from utils import *
 # for GIF
 from PIL import Image
 
-# Load the given data insead of the collected.
-collected_data = np.load('pushing_image_data.npy', allow_pickle=True)
+def main():
+    # Load the given data insead of the collected.
+    collected_data = np.load('pushing_image_data.npy', allow_pickle=True)
 
-# Train the dynamics model
-LATENT_DIM = 16
-ACTION_DIM = 3
-NUM_CHANNELS = 1
-NUM_STEPS = 1
+    # Train the dynamics model
+    LATENT_DIM = 16
+    ACTION_DIM = 3
+    NUM_CHANNELS = 1
+    NUM_STEPS = 1
 
-single_step_latent_dynamics_model = SINDyDynamicsModel(latent_dim=LATENT_DIM, action_dim=ACTION_DIM, num_channels=NUM_CHANNELS)
-# single_step_latent_dynamics_model = LatentDynamicsModel(latent_dim=LATENT_DIM, action_dim=ACTION_DIM, num_channels=NUM_CHANNELS)
-
-
-# Compute normalization constants
-train_loader, val_loader, norm_constants = process_data_multiple_step(collected_data, batch_size=500, num_steps=NUM_STEPS)
-norm_tr = NormalizationTransform(norm_constants)
-
-state_loss_fn = nn.MSELoss()
-latent_loss_fn = nn.MSELoss()
-multistep_loss = SINDyLoss(state_loss_fn, latent_loss_fn)
-# multistep_loss = MultiStepLoss(state_loss_fn, latent_loss_fn, alpha=0.1)
+    # single_step_latent_dynamics_model = SINDyDynamicsModel(latent_dim=LATENT_DIM, action_dim=ACTION_DIM, num_channels=NUM_CHANNELS)
+    # # single_step_latent_dynamics_model = LatentDynamicsModel(latent_dim=LATENT_DIM, action_dim=ACTION_DIM, num_channels=NUM_CHANNELS)
 
 
-TRAIN_MODEL = False
-if TRAIN_MODEL:
-    # TODO: Train latent_dynamics_model
-    # --- Your code here
-    NUM_EPOCHS = 250
-    # NUM_EPOCHS = 250
-    LR = 0.7 * 1e-3
+    # # Compute normalization constants
+    train_loader, val_loader, norm_constants = process_data_multiple_step(collected_data, batch_size=500, num_steps=NUM_STEPS)
+    norm_tr = NormalizationTransform(norm_constants)
 
+    multi_step_latent_dynamics_model = SINDyDynamicsModel(latent_dim=LATENT_DIM, action_dim=ACTION_DIM, num_channels=NUM_CHANNELS)
+    # multi_step_latent_dynamics_model = LatentDynamicsModel(latent_dim=LATENT_DIM, action_dim=ACTION_DIM, num_channels=NUM_CHANNELS)
 
-    optimizer = optim.Adam(single_step_latent_dynamics_model.parameters(), lr=LR)
-    pbar = tqdm(range(NUM_EPOCHS))
-    train_losses = []
-    for epoch_i in pbar:
-        train_loss_i = 0.
+    state_loss_fn = nn.MSELoss()
+    latent_loss_fn = nn.MSELoss()
+    multistep_loss = SINDyLoss(state_loss_fn, latent_loss_fn)
+    # multistep_loss = MultiStepLoss(state_loss_fn, latent_loss_fn, alpha=0.1)
+
+    # Compute normalization constants
+    train_loader, val_loader, norm_constants = process_data_multiple_step(collected_data, batch_size=512, num_steps=NUM_STEPS)
+
+    TRAIN_MODEL = False
+    if TRAIN_MODEL:
         # --- Your code here
-        for batch_idx, sample in enumerate(train_loader):
-            # print("batch_idx = ", batch_idx)
-            states_batch, actions_batch = sample["states"], sample["actions"]
-
-            optimizer.zero_grad()
-            loss = multistep_loss(single_step_latent_dynamics_model, states_batch, actions_batch)
-            loss.backward()
-            optimizer.step()
-            
-            # ---
-            train_loss_i += loss.item()
-            pbar.set_description(f'Latent dim {LATENT_DIM} - Loss: {train_loss_i:.4f}')
-            train_losses.append(train_loss_i)
-
-    losses = train_losses
+        NUM_EPOCHS = 500
+        # NUM_EPOCHS = 300
+        LR = 0.7 * 1e-3
 
 
-    # plot train loss and test loss:
-    fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(12, 3))
-    axes = [axes]
-    axes[0].plot(losses, label=f'latent_dim: {LATENT_DIM}')
-    axes[0].grid()
-    axes[0].legend()
-    axes[0].set_title('Train Loss')
-    axes[0].set_xlabel('Epochs')
-    axes[0].set_ylabel('Train Loss')
-    axes[0].set_yscale('log')
+        optimizer = optim.Adam(multi_step_latent_dynamics_model.parameters(), lr=LR)
+        pbar = tqdm(range(NUM_EPOCHS))
+        train_losses = []
+        for epoch_i in pbar:
+            train_loss_i = 0.
+            # --- Your code here
+            for batch_idx, sample in enumerate(train_loader):
+                # print("batch_idx = ", batch_idx)
+                states_batch, actions_batch = sample["states"], sample["actions"]
+
+                optimizer.zero_grad()
+                loss = multistep_loss(multi_step_latent_dynamics_model, states_batch, actions_batch)
+                loss.backward()
+                optimizer.step()
+                
+                # ---
+                train_loss_i += loss.item()
+                pbar.set_description(f'Latent dim {LATENT_DIM} - Loss: {train_loss_i:.4f}')
+                train_losses.append(train_loss_i)
+
+        losses = train_losses
 
 
-    # ---
-
-    # save model:
-    save_path = os.path.join('single_step_latent_dynamics_model.pt')
-    torch.save(single_step_latent_dynamics_model.state_dict(), save_path)
-
-    plt.show()
-
-    # Visualize the ability to perform single-step and multi-step state prediction:
-    traj = collected_data[0]
-    evaluate_model_plot(single_step_latent_dynamics_model, traj, norm_tr)
-
-    plt.show()
-
-# Load the model
-latent_dynamics_model = SINDyDynamicsModel(latent_dim=LATENT_DIM, action_dim=ACTION_DIM, num_channels=NUM_CHANNELS)
-# latent_dynamics_model = LatentDynamicsModel(latent_dim=LATENT_DIM, action_dim=ACTION_DIM, num_channels=NUM_CHANNELS)
-model_path = os.path.join('single_step_latent_dynamics_model.pt')
-latent_dynamics_model.load_state_dict(torch.load(model_path))
+        # plot train loss and test loss:
+        fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(12, 3))
+        axes = [axes]
+        axes[0].plot(losses, label=f'latent_dim: {LATENT_DIM}')
+        axes[0].grid()
+        axes[0].legend()
+        axes[0].set_title('Train Loss')
+        axes[0].set_xlabel('Epochs')
+        axes[0].set_ylabel('Train Loss')
+        axes[0].set_yscale('log')
 
 
-visualizer = None
+        # ---
 
-target_state = np.array([0.7, 0., 0.])
+        # save model:
+        save_path = os.path.join('multi_step_latent_dynamics_model.pt')
+        torch.save(multi_step_latent_dynamics_model.state_dict(), save_path)
 
-env = PandaImageSpacePushingEnv(visualizer=visualizer, render_non_push_motions=False,  camera_heigh=800, camera_width=800, render_every_n_steps=5, grayscale=True)
-state_0 = env.reset()
-env.object_target_pose = env._planar_pose_to_world_pose(target_state)
-controller = PushingLatentController(env, latent_dynamics_model, latent_space_pushing_cost_function,norm_constants, num_samples=100, horizon=10)
+        plt.show()
 
-state = state_0
+        # Visualize the ability to perform single-step and multi-step state prediction:
+        traj = collected_data[0]
+        evaluate_model_plot(multi_step_latent_dynamics_model, traj, norm_tr)
 
-# num_steps_max = 100
-num_steps_max = 20
-
-for i in tqdm(range(num_steps_max)):
-    action = controller.control(state)
-    state, reward, done, _ = env.step(action)
-    end_pose = env.get_object_pos_planar()
-    goal_distance = np.linalg.norm(end_pose[:2]-target_state[:2]) # evaluate only position, not orientation
-    goal_reached = goal_distance < BOX_SIZE
-    if done or goal_reached:
-        break
-
-# Generated GIF
-frames = [Image.fromarray(frame) for frame in env.frames]
-frame_one = frames[1]
-frame_one.save("demo.gif", format="GIF", append_images=frames, save_all=True, duration=100, loop=0)
+        plt.show()
 
 
-print(f'GOAL REACHED: {goal_reached}')
+    # Load the model
+    latent_dynamics_model = SINDyDynamicsModel(latent_dim=LATENT_DIM, action_dim=ACTION_DIM, num_channels=NUM_CHANNELS)
+    # latent_dynamics_model = LatentDynamicsModel(latent_dim=LATENT_DIM, action_dim=ACTION_DIM, num_channels=NUM_CHANNELS)
+    model_path = os.path.join('multi_step_latent_dynamics_model.pt')
+    latent_dynamics_model.load_state_dict(torch.load(model_path))
+
+
+    visualizer = None
+
+    target_state = np.array([0.7, 0., 0.])
+
+    env = PandaImageSpacePushingEnv(visualizer=visualizer, render_non_push_motions=False,  camera_heigh=800, camera_width=800, render_every_n_steps=5, grayscale=True)
+    state_0 = env.reset()
+    env.object_target_pose = env._planar_pose_to_world_pose(target_state)
+    # controller = PushingLatentController(env, latent_dynamics_model, latent_space_pushing_cost_function,norm_constants, num_samples=100, horizon=10)
+    controller = PushingImgSpaceController(env, latent_dynamics_model, img_space_pushing_cost_function, norm_constants, num_samples=100, horizon=10)
+
+    state = state_0
+
+    # num_steps_max = 100
+    num_steps_max = 20
+
+    for i in tqdm(range(num_steps_max)):
+        action = controller.control(state)
+        state, reward, done, _ = env.step(action)
+        end_pose = env.get_object_pos_planar()
+        goal_distance = np.linalg.norm(end_pose[:2]-target_state[:2]) # evaluate only position, not orientation
+        goal_reached = goal_distance < BOX_SIZE
+        if done or goal_reached:
+            break
+
+    # Generated GIF
+    frames = [Image.fromarray(frame) for frame in env.frames]
+    frame_one = frames[1]
+    frame_one.save("demo.gif", format="GIF", append_images=frames, save_all=True, duration=100, loop=0)
+
+
+    print(f'\nGOAL REACHED: {goal_reached}\n')
+    print("The result in saved in demo.gif! Please check it out")
+
+if __name__ == "__main__":
+    print("-----------------------\n")
+    print("Welcome to the demo. This should take less than one minute to run.\n")
+    print("In this demo, I will demonstrate a dynamics learned by SINDy with")
+    print("encoder and decoder that conducting a pushing task as in HW5.\n")
+    print("The resulting video will be saved in the file: demo.gif\n")
+    print("If you face any issue, please email me at leekt@umich.edu. Thank you so much!")
+    print("\n-----------------------")
+    main()
